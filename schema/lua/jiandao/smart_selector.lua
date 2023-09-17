@@ -17,43 +17,41 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 --]]
 
-local semicolon = "semicolon"
-local apostrophe = "apostrophe"
+local semicolon = KeyEvent(";") --("semicolon")
+local apostrophe = KeyEvent("'") --("apostrophe")
 local kRejected = 0 -- do the OS default processing
 local kAccepted = 1 -- consume it
 local kNoop     = 2 -- leave it to other processors
+
+local function page_start_index(engine)
+    local context = engine.context
+    local page_size= engine.schema.page_size
+    local segment= context.composition:back()
+    if not segment then return -1 end
+    return (segment.selected_index // page_size) * page_size 
+end
 
 local function processor(key_event, env)
     if key_event:release() or key_event:alt() or key_event:super() then
         return kNoop
     end
-    local key = key_event:repr()
-    if key ~= semicolon and key ~= apostrophe then
-        return kNoop
-    end
-
     local context = env.engine.context
-    local page_size = env.engine.schema.page_size
-    local selected_index = context.composition:back().selected_index
-    local page_start = (selected_index / page_size) * page_size
-
-    local index = key == semicolon and 1 or 2
-    if context:select(page_start + index) then
-        context:commit()
-        return kAccepted
-    end
-
-    if not context:get_selected_candidate() then
-        if context.input:len() <= 1 then
-            -- 分号引导的符号需要交给下一个处理器
-            return kNoop
-        end
-        context:clear()
+    if not context:has_menu() then return kNoop end
+    local pg_first_index =  page_start_index(env.engine)
+    if pg_first_index < 0 then return kNoop end
+    
+    if key_event:eq(semicolon) then
+      for _,v in ipairs{1,0} do
+        if context:select(pg_first_index + v) then return kAccepted end
+      end
+    elseif key_event:eq(apostrophe) then
+      for _,v in ipairs{2,1,0} do
+        if context:select(pg_first_index + v) then return kAccepted end
+      end
     else
-        context:commit()
+      return kNoop
     end
-
-    return kAccepted
+    return kNoop
 end
 
 return { func = processor }
